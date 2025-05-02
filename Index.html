@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Penjualan Crypto</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      background: linear-gradient(to right, #0f2027, #203a43, #2c5364);
+      color: #fff;
+      margin: 0;
+      padding: 20px;
+      display: flex;
+      justify-content: center;
+      flex-direction: column;
+      align-items: center;
+    }
+    .card {
+      background: rgba(30, 30, 50, 0.9);
+      padding: 30px;
+      border-radius: 20px;
+      max-width: 580px;
+      width: 100%;
+      box-shadow: 0 6px 25px rgba(0, 0, 0, 0.6);
+      backdrop-filter: blur(10px);
+    }
+    h2 {
+      text-align: center;
+      color: #00e0ff;
+      margin-bottom: 20px;
+    }
+    input, select, button {
+      width: 100%;
+      padding: 12px;
+      border-radius: 8px;
+      border: none;
+      margin: 8px 0;
+      font-size: 16px;
+    }
+    input[type="number"], input[type="text"], select {
+      background: #343457;
+      color: #fff;
+    }
+    button {
+      background: linear-gradient(to right, #00e0ff, #00ffc3);
+      color: black;
+      font-weight: bold;
+      cursor: pointer;
+    }
+    label {
+      font-weight: bold;
+      display: block;
+      margin-top: 12px;
+    }
+    .result {
+      margin-top: 20px;
+      background: #2a2a44;
+      padding: 20px;
+      border-radius: 14px;
+    }
+    .result span {
+      color: #33ffcc;
+      font-weight: bold;
+    }
+    #status-transaksi {
+      margin-top: 10px;
+      font-weight: bold;
+      text-align: center;
+      color: orange;
+      transition: color 0.5s ease, opacity 0.5s ease;
+      opacity: 1;
+    }
+    #history {
+      margin-top: 30px;
+      max-height: 300px;
+      overflow-y: auto;
+    }
+    #history div {
+      border-bottom: 1px solid #555;
+      padding: 10px 0;
+    }
+    #history small {
+      color: #aaa;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h2>Penjualan Crypto</h2>
+
+    <label for="crypto-select">Pilih Koin:</label>
+    <select id="crypto-select" size="6"></select>
+
+    <label for="amount-input">Jumlah Koin yang Dijual:</label>
+    <input type="number" id="amount-input" placeholder="Misal: 0.05" step="0.00000001" min="0.00000001" value="0.05">
+
+    <label for="user-name">Nama Lengkap:</label>
+    <input type="text" id="user-name" placeholder="Nama Lengkap">
+
+    <label for="user-contact">Nomor Kontak / Email:</label>
+    <input type="text" id="user-contact" placeholder="Nomor Kontak / Email">
+
+    <button onclick="calculateSale()">Hitung Total Penjualan</button>
+    <button id="whatsapp-btn" onclick="sendToWhatsApp()" style="display:none;">Kirim Pesanan ke WhatsApp</button>
+
+    <div class="result" id="result" style="display:none;">
+      <p>Harga Koin Saat Ini: <span id="price-value">Rp 0</span></p>
+      <p>Jumlah Koin Dijual: <span id="asset-value">0</span></p>
+      <p>Biaya Admin (3,5%): <span id="admin-value">Rp 0</span></p>
+      <p><strong>Total Diterima: <span id="total-pay">Rp 0</span></strong></p>
+      <p id="status-transaksi">Belum Terverifikasi</p>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top: 30px; width: 100%;">
+    <h2>Riwayat Transaksi</h2>
+    <div id="history"></div>
+  </div>
+
+  <script>
+    const select = document.getElementById('crypto-select');
+    let coinList = [];
+
+    fetch('https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=100&page=1')
+      .then(res => res.json())
+      .then(data => {
+        coinList = data.sort((a, b) => a.name.localeCompare(b.name));
+        renderOptions(coinList);
+      });
+
+    function renderOptions(coins) {
+      select.innerHTML = '';
+      coins.forEach(coin => {
+        const option = document.createElement('option');
+        option.value = coin.id;
+        option.textContent = `${coin.name} (${coin.symbol.toUpperCase()})`;
+        select.appendChild(option);
+      });
+    }
+
+    async function calculateSale() {
+      const coinId = select.value;
+      const coinAmount = parseFloat(document.getElementById('amount-input').value);
+      if (!coinId || isNaN(coinAmount) || coinAmount <= 0) return;
+
+      const res = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${coinId}&vs_currencies=usd`);
+      const rateRes = await fetch('https://api.exchangerate-api.com/v4/latest/USD');
+      const data = await res.json();
+      const rateData = await rateRes.json();
+
+      const usdToIdr = rateData.rates.IDR;
+      const priceUsd = data[coinId].usd;
+      const priceIdr = priceUsd * usdToIdr;
+
+      const rupiahAmount = coinAmount * priceIdr;
+      const adminFee = rupiahAmount * 0.035;
+      const totalAfterAdmin = rupiahAmount - adminFee;
+
+      document.getElementById('price-value').textContent = formatRupiah(priceIdr);
+      document.getElementById('asset-value').textContent = `${coinAmount.toFixed(8)} ${coinList.find(c => c.id === coinId).symbol.toUpperCase()}`;
+      document.getElementById('admin-value').textContent = formatRupiah(adminFee);
+      document.getElementById('total-pay').textContent = formatRupiah(totalAfterAdmin);
+      document.getElementById('result').style.display = 'block';
+      document.getElementById('whatsapp-btn').style.display = 'block';
+
+      const status = document.getElementById('status-transaksi');
+      status.style.opacity = 0;
+      setTimeout(() => {
+        status.textContent = "Belum Terverifikasi";
+        status.style.color = "orange";
+        status.style.opacity = 1;
+      }, 300);
+    }
+
+    function formatRupiah(angka) {
+      return 'Rp ' + angka.toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+    }
+
+    function sendToWhatsApp() {
+      const name = document.getElementById('user-name').value.trim();
+      const contact = document.getElementById('user-contact').value.trim();
+      const coin = select.options[select.selectedIndex]?.text;
+      const coinAmountText = document.getElementById('asset-value').textContent;
+      const admin = document.getElementById('admin-value').textContent;
+      const total = document.getElementById('total-pay').textContent;
+
+      if (!name || !contact) {
+        alert('Mohon isi nama dan kontak.');
+        return;
+      }
+
+      const message = `*Pesanan Penjualan Crypto*\n\n` +
+        `Nama: ${name}\nKontak: ${contact}\nKoin: ${coin}\nJumlah Dijual: ${coinAmountText}\n` +
+        `Biaya Admin (3,5%): ${admin}\n\n` +
+        `Total Diterima: ${total}`;
+
+      const encodedMessage = encodeURIComponent(message);
+      const whatsappUrl = `https://wa.me/628567624130?text=${encodedMessage}`;
+      window.open(whatsappUrl, '_blank');
+
+      const time = new Date().toLocaleString('id-ID');
+      saveTransaction({
+        name,
+        contact,
+        coin,
+        amount: coinAmountText,
+        admin,
+        total,
+        time
+      });
+
+      const status = document.getElementById('status-transaksi');
+      status.style.opacity = 0;
+      setTimeout(() => {
+        status.textContent = "Transaksi Terverifikasi";
+        status.style.color = "lime";
+        status.style.opacity = 1;
+      }, 300);
+    }
+
+    function saveTransaction(data) {
+      let history = JSON.parse(localStorage.getItem('history') || '[]');
+      history.unshift(data);
+      localStorage.setItem('history', JSON.stringify(history));
+      loadHistory();
+    }
+
+    function loadHistory() {
+      const historyDiv = document.getElementById('history');
+      const history = JSON.parse(localStorage.getItem('history') || '[]');
+
+      if (history.length === 0) {
+        historyDiv.innerHTML = '<p>Belum ada transaksi.</p>';
+        return;
+      }
+
+      historyDiv.innerHTML = '';
+      history.forEach((trx, i) => {
+        const box = document.createElement('div');
+        box.innerHTML = `
+          <strong>${i + 1}. ${trx.name} - ${trx.coin}</strong><br/>
+          Kontak: ${trx.contact}<br/>
+          Koin Dijual: ${trx.amount}<br/>
+          Biaya Admin: ${trx.admin}<br/>
+          Total Diterima: ${trx.total}<br/>
+          <small>${trx.time}</small>
+        `;
+        historyDiv.appendChild(box);
+      });
+    }
+
+    window.onload = loadHistory;
+  </script>
+</body>
+  </html>
